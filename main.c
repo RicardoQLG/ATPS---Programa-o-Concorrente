@@ -12,20 +12,23 @@
   #define sleep(x) Sleep(1000 * x) // Adapta o sleep
 #endif
 
-#define READ_WRITE "a+" // Modo de gravação do CSV
+#define READ_WRITE "w+" // Modo de gravação do CSV
 #define EXPORT_AS_CSV TRUE // Deve exportar aquivo CSV
 #define SEPARATOR ";"   // Separador do arquivo
-#define DEBUG          // Modo de debug (commente para o ver em produção)
+//#define DEBUG          // Modo de debug (commente para o ver em produção)
 
 #ifndef DEBUG
   #define POSITIONS 5000        // Quantidade de elementos no buffer
   #define USLEEP_TIME 10        // Tempo de espera do processo
+  #define TOTAL_CICLES 10
 #else
-  #define POSITIONS 20          // Quantidade de elementos no buffer
-  #define USLEEP_TIME 1         // Tempo de espera do processo
+  #define POSITIONS 20        // Quantidade de elementos no buffer
+  #define USLEEP_TIME .001      // Tempo de espera do processo
+  #define TOTAL_CICLES 2
 #endif // DEBUG
 
-#define CONCURRENT_CONSUMERS 5 // Numnero de threads
+#define MAX_THREADS_NUMBER 1000 // Numnero máximo de threads
+#define QUEUE_LENGTH 50000
 
 // Armazena o buffer que será processado pela thread
 struct Buffer {
@@ -34,13 +37,13 @@ struct Buffer {
 } buffer;
 
 // Armazena as threads criadas
-pthread_t concurrent_consumers[CONCURRENT_CONSUMERS];
+pthread_t concurrent_consumers[MAX_THREADS_NUMBER];
 
 // Armazena o numero de threads em processamento
 int num_threads;
 // Guarda textos do CSV
-char stdio[1024];
-char queue[1024];
+char stdio[256];
+char queue[QUEUE_LENGTH];
 
 // Aponta para arquivo CSV
 FILE *csv_handler;
@@ -51,15 +54,22 @@ void insertCSVData ()
 {
     printf(queue);
     fwrite ("\n", 1, sizeof("\n"), csv_handler);
+    int i;
     fwrite (queue, 1, sizeof(queue), csv_handler);
     fwrite ("\n", 1, sizeof("\n"), csv_handler);
-
+    memset(stdio,0,strlen(stdio));
 }
 
 void queueCSVData (char *line)
 {
     char *tmp;
+    if (strlen(queue) + strlen(line) > QUEUE_LENGTH) {
+      printf("%lu",strlen(queue) + strlen(line));
+      exit(1);
+    }
     strcat(queue, line);
+    free(tmp);
+    free(line);
 }
 
 /**
@@ -126,6 +136,7 @@ void *consumer (void *arg)
 
     // Informa ao semáforo que o trabalho foi finalizado
     sem_post(&semaphore);
+    //free(arg);
   }
 
   time_t fim = time(NULL);
@@ -143,22 +154,21 @@ void *consumer (void *arg)
         );
   // Grava no arquivo CSV
   queueCSVData(stdio);
+  memset(stdio, 0, strlen(stdio));
 
   num_threads--;
 }
 
-int main (int argc, char const *argv[])
+int execute (int threads_number)
 {
   int i; // Declaração da variável auxiliar
-  sem_init(&semaphore, 0, CONCURRENT_CONSUMERS); // inicia o semáforo
+  sem_init(&semaphore, 0, threads_number); // inicia o semáforo
 
   if (EXPORT_AS_CSV) // Se pediu exportação em CSV
   {
     // Zera o tamanho do buffer de armazenamento de textos
     memset(stdio,0,strlen(stdio));
 
-    // Abre o arquivo csv para escrita
-    csv_handler = fopen ( "data.csv", READ_WRITE );
     // Guarda o header do CSV na variável
     sprintf(stdio,
         "Pedido:%sThread id:%sInicio: (s)%s Fim: (s)%s Duracao: (s)\n",
@@ -176,7 +186,7 @@ int main (int argc, char const *argv[])
   time_t start_time = time(NULL);
 
   // Para cada thread de consumidor
-  for (i = 0; i < CONCURRENT_CONSUMERS; i++)
+  for (i = 0; i < threads_number; i++)
   {
     // Cria a nova thread
     pthread_create(&(concurrent_consumers[i]), NULL, &consumer, (void *)i);
@@ -191,7 +201,7 @@ int main (int argc, char const *argv[])
   if (EXPORT_AS_CSV) // Se pediu exportação em CSV
   {
     insertCSVData();
-
+    memset (stdio, 0, strlen(stdio));
     sprintf(stdio,
         "Tempo total de processamento:%s%s%d%s%d%s%d\n",
         SEPARATOR,
@@ -207,6 +217,34 @@ int main (int argc, char const *argv[])
     fwrite (stdio, 1, sizeof(stdio), csv_handler);
 
     fwrite ("\n", 1, sizeof("\n"), csv_handler);
+  }
+  return 0;
+}
+
+int main (int argc, char const *argv[])
+{
+  if (EXPORT_AS_CSV) // Se pediu exportação em CSV
+  {
+    // Abre o arquivo csv para escrita
+    csv_handler = fopen ( "data.csv", READ_WRITE );
+  }
+
+  int i;
+  int thread[3] = {100, 500, 1000};
+  int current_num_threads = 0;
+
+  for (current_num_threads = 0; current_num_threads < 6; current_num_threads++)
+  {
+    i = TOTAL_CICLES;
+    while (i--)
+    {
+      memset(queue,0,strlen(queue));
+      execute(thread[current_num_threads]);
+    }
+  }
+
+  if (EXPORT_AS_CSV) // Se pediu exportação em CSV
+  {
     // Fecha io arquivo CSV
     fclose (csv_handler);
   }
