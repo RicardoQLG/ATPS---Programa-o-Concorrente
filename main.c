@@ -12,7 +12,7 @@
   #define sleep(x) Sleep(1000 * x) // Adapta o sleep
 #endif
 
-#define READ_WRITE "w+" // Modo de gravação do CSV
+#define READ_WRITE "a+" // Modo de gravação do CSV
 #define EXPORT_AS_CSV TRUE // Deve exportar aquivo CSV
 #define SEPARATOR ";"   // Separador do arquivo
 #define DEBUG          // Modo de debug (commente para o ver em produção)
@@ -40,10 +40,27 @@ pthread_t concurrent_consumers[CONCURRENT_CONSUMERS];
 int num_threads;
 // Guarda textos do CSV
 char stdio[1024];
+char queue[1024];
+
 // Aponta para arquivo CSV
 FILE *csv_handler;
 // Semáforo usado para controlar threads
 sem_t semaphore;
+
+void insertCSVData ()
+{
+    printf(queue);
+    fwrite ("\n", 1, sizeof("\n"), csv_handler);
+    fwrite (queue, 1, sizeof(queue), csv_handler);
+    fwrite ("\n", 1, sizeof("\n"), csv_handler);
+
+}
+
+void queueCSVData (char *line)
+{
+    char *tmp;
+    strcat(queue, line);
+}
 
 /**
  * Consumidor
@@ -55,7 +72,9 @@ void *consumer (void *arg)
   // Exibe na tela a thread sendo iniciada
   printf("Criando thread %d\n", self);
 
-   // Enquando houverem trabalhos a serem executados
+  time_t ini = time(NULL);
+
+  // Enquando houverem trabalhos a serem executados
   while (buffer.current_position < POSITIONS)
   {
     // armazena o buffer de trabalho atual na váriavel auxiliar
@@ -108,7 +127,23 @@ void *consumer (void *arg)
     // Informa ao semáforo que o trabalho foi finalizado
     sem_post(&semaphore);
   }
-  
+
+  time_t fim = time(NULL);
+
+  sprintf(stdio,
+          "Thread%s%lu%lu%s%d%s%d%s%d\n",
+          SEPARATOR,
+          self,
+          SEPARATOR,
+          ini,
+          SEPARATOR,
+          fim,
+          SEPARATOR,
+          fim - ini
+        );
+  // Grava no arquivo CSV
+  queueCSVData(stdio);
+
   num_threads--;
 }
 
@@ -123,7 +158,7 @@ int main (int argc, char const *argv[])
     memset(stdio,0,strlen(stdio));
 
     // Abre o arquivo csv para escrita
-    csv_handler = fopen ( "data.csv", READ_WRITE ); 
+    csv_handler = fopen ( "data.csv", READ_WRITE );
     // Guarda o header do CSV na variável
     sprintf(stdio,
         "Pedido:%sThread id:%sInicio: (s)%s Fim: (s)%s Duracao: (s)\n",
@@ -138,6 +173,7 @@ int main (int argc, char const *argv[])
 
   // Zera a posição atual o buffer
   buffer.current_position = 0;
+  time_t start_time = time(NULL);
 
   // Para cada thread de consumidor
   for (i = 0; i < CONCURRENT_CONSUMERS; i++)
@@ -150,9 +186,27 @@ int main (int argc, char const *argv[])
 
   // Permanece com o processo em execução enquanto houverem thread abertas
   while (num_threads);
+  time_t end_time = time(NULL);
 
   if (EXPORT_AS_CSV) // Se pediu exportação em CSV
   {
+    insertCSVData();
+
+    sprintf(stdio,
+        "Tempo total de processamento:%s%s%d%s%d%s%d\n",
+        SEPARATOR,
+        SEPARATOR,
+        start_time,
+        SEPARATOR,
+        end_time,
+        SEPARATOR,
+        end_time - start_time
+      );
+
+    // Grava no arquivo CSV
+    fwrite (stdio, 1, sizeof(stdio), csv_handler);
+
+    fwrite ("\n", 1, sizeof("\n"), csv_handler);
     // Fecha io arquivo CSV
     fclose (csv_handler);
   }
