@@ -1,7 +1,6 @@
 #include <stdio.h>     // Funções de input e output
 
 #include <pthread.h>   // Thread que é a base da aplicação
-#include <semaphore.h> // Funções de semáforo em C
 
 #include <fcntl.h>     // Necessário para O_CREAT
 
@@ -47,8 +46,6 @@ char queue[QUEUE_LENGTH];
 
 // Aponta para arquivo CSV
 FILE *csv_handler;
-// Semáforo usado para controlar threads
-sem_t semaphore;
 
 void insertCSVData ()
 {
@@ -75,7 +72,56 @@ void queueCSVData (char *line)
 /**
  * Consumidor
  */
-void *consumer (void *arg)
+void consumer (pthread_t self)
+{
+  // armazena o buffer de trabalho atual na váriavel auxiliar
+  int n = buffer.current_position++;
+
+  // Guarda o valor a ser processado
+  int value = buffer.values[n];
+  // timestamp do inicio da tarefa
+  time_t start_time = time(NULL);
+
+
+
+  /* Tarefa */
+  sleep(USLEEP_TIME); // Aguarde por um tempo
+  /* Tarefa */
+
+
+  // timestamp do fim da tarefa
+  time_t end_time = time(NULL);
+
+  printf("Pedido: %d\n", n);
+  printf("Thread id:%lu\n", self);
+  printf("Inicio:%d(s), ", start_time);
+  printf("Fim:%d(s), ", end_time);
+  printf("Duracao:%d(s)\n\n", end_time - start_time);
+
+  if (EXPORT_AS_CSV) // Se for necessário exportar um CSV
+  {
+    // limpa os dados da variável auxiliar
+    memset(stdio,0,strlen(stdio));
+    // Grava os novos dados da variável
+    sprintf(stdio,
+        "%d%s%lu%lu%s%d%s%d%s%d\n",
+        n,
+        SEPARATOR,
+        self,
+        SEPARATOR,
+        start_time,
+        SEPARATOR,
+        end_time,
+        SEPARATOR,
+        end_time - start_time
+      );
+    // Grava no arquivo CSV
+    fwrite (stdio, 1, sizeof(stdio), csv_handler);
+  }
+}
+
+// Cria a thread
+void *thread(void *arg)
 {
   // Guarda o id da thread atual
   pthread_t self = pthread_self();
@@ -87,58 +133,8 @@ void *consumer (void *arg)
   // Enquando houverem trabalhos a serem executados
   while (buffer.current_position < POSITIONS)
   {
-    // armazena o buffer de trabalho atual na váriavel auxiliar
-    int n = buffer.current_position++;
-    // Aguarda o semáforo liberar a execução do trabalho
-    sem_wait(&semaphore);
-
-    // Guarda o valor a ser processado
-    int value = buffer.values[n];
-    // timestamp do inicio da tarefa
-    time_t start_time = time(NULL);
-
-
-
-    /* Tarefa */
-    sleep(USLEEP_TIME); // Aguarde por um tempo
-    /* Tarefa */
-
-
-    // timestamp do fim da tarefa
-    time_t end_time = time(NULL);
-
-    printf("Pedido: %d\n", n);
-    printf("Thread id:%lu\n", self);
-    printf("Inicio:%d(s), ", start_time);
-    printf("Fim:%d(s), ", end_time);
-    printf("Duracao:%d(s)\n\n", end_time - start_time);
-
-    if (EXPORT_AS_CSV) // Se for necessário exportar um CSV
-    {
-      // limpa os dados da variável auxiliar
-      memset(stdio,0,strlen(stdio));
-      // Grava os novos dados da variável
-      sprintf(stdio,
-          "%d%s%lu%lu%s%d%s%d%s%d\n",
-          n,
-          SEPARATOR,
-          self,
-          SEPARATOR,
-          start_time,
-          SEPARATOR,
-          end_time,
-          SEPARATOR,
-          end_time - start_time
-        );
-      // Grava no arquivo CSV
-      fwrite (stdio, 1, sizeof(stdio), csv_handler);
-    }
-
-    // Informa ao semáforo que o trabalho foi finalizado
-    sem_post(&semaphore);
-    //free(arg);
+    consumer(self);
   }
-
   time_t fim = time(NULL);
 
   sprintf(stdio,
@@ -157,12 +153,12 @@ void *consumer (void *arg)
   memset(stdio, 0, strlen(stdio));
 
   num_threads--;
+
 }
 
 int execute (int threads_number)
 {
   int i; // Declaração da variável auxiliar
-  sem_init(&semaphore, 0, threads_number); // inicia o semáforo
 
   if (EXPORT_AS_CSV) // Se pediu exportação em CSV
   {
@@ -189,7 +185,7 @@ int execute (int threads_number)
   for (i = 0; i < threads_number; i++)
   {
     // Cria a nova thread
-    pthread_create(&(concurrent_consumers[i]), NULL, &consumer, (void *)i);
+    pthread_create(&(concurrent_consumers[i]), NULL, &thread, (void *)i);
     // incrementa para cada thread iniciada
     num_threads++;
   }
@@ -230,10 +226,10 @@ int main (int argc, char const *argv[])
   }
 
   int i;
-  int thread[3] = {100, 500, 1000};
+  int thread[1] = {1000};
   int current_num_threads = 0;
 
-  for (current_num_threads = 0; current_num_threads < 6; current_num_threads++)
+  for (current_num_threads = 0; current_num_threads < 1; current_num_threads++)
   {
     i = TOTAL_CICLES;
     while (i--)
