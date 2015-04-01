@@ -23,7 +23,7 @@
 #else
   #define POSITIONS 20        // Quantidade de elementos no buffer
   #define USLEEP_TIME .001      // Tempo de espera do processo
-  #define TOTAL_CICLES 2
+  #define TOTAL_CICLES 1
 #endif // DEBUG
 
 #define MAX_THREADS_NUMBER 1000 // Numnero máximo de threads
@@ -226,10 +226,10 @@ int main (int argc, char const *argv[])
   }
 
   int i;
-  int thread[1] = {1000};
+  int thread[6] = {1,10,50,100,500,1000};
   int current_num_threads = 0;
 
-  for (current_num_threads = 0; current_num_threads < 1; current_num_threads++)
+  for (current_num_threads = 0; current_num_threads < 6; current_num_threads++)
   {
     i = TOTAL_CICLES;
     while (i--)
